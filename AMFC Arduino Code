@@ -1,0 +1,316 @@
+    #include <SPI.h>
+    #include <Wire.h>
+    #include <Adafruit_GFX.h>
+    #include <Adafruit_SH110X.h>
+    #include "DHT.h"
+     
+    Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire);
+
+    #define DHTPIN A0 
+    #define DHTTYPE DHT22
+    
+    #define BUTTON_A  9
+    #define BUTTON_B  6
+    #define BUTTON_C  5
+
+    #define fanOutput 11
+    #define humOutput 12
+    #define lightOutput 10
+    #define tempOutput A1
+
+    int fanTimer;
+    int fanOnTimer;
+    bool fanOn = false;
+
+    int lightTimer;
+    int lightOnTimer;
+    bool lightOn = false;
+
+    bool tempOn = false;
+    bool humOn = false;
+    
+    int fea;
+    int hum;
+    int temp;
+    int light;
+    int hif;
+    int h;
+
+    bool sleep = false; 
+    int timer;
+    int sleepTimer = 30000;
+
+    unsigned long startMillis;  //some global variables available anywhere in the program
+    unsigned long currentMillis;
+
+    byte clk;
+    byte menuPos = 1;
+
+    bool press = false;
+
+    DHT dht(DHTPIN, DHTTYPE);
+     
+    void setup() {
+      Serial.begin(115200);
+     
+      Serial.println("Mushroom Fruiting Chamber");
+      display.begin(0x3C, true); // Address 0x3C default
+     
+      Serial.println("OLED begun");
+     
+      // Show image buffer on the display hardware.
+      // Since the buffer is intialized with an Adafruit splashscreen
+      // internally, this will display the splashscreen.
+      display.display();
+      delay(1000);
+      startMillis = millis();
+      dht.begin();
+      
+      // Clear the buffer.
+      display.clearDisplay();
+      display.display();
+     
+      display.setRotation(1);
+      Serial.println("Button test");
+     
+      pinMode(BUTTON_A, INPUT_PULLUP);
+      pinMode(BUTTON_B, INPUT_PULLUP);
+      pinMode(BUTTON_C, INPUT_PULLUP);
+
+      pinMode(fanOutput, OUTPUT);
+      pinMode(humOutput, OUTPUT);
+      pinMode(lightOutput, OUTPUT);
+      pinMode(tempOutput, OUTPUT);
+     
+      // text display tests
+      display.setTextSize(1);
+      display.setTextColor(SH110X_WHITE);
+      display.setCursor(0,0);
+      display.print("Starting Chamber...");
+      display.display(); // actually display all of the above
+      delay(1000);
+      display.clearDisplay();
+    }
+     
+    void loop() {
+      currentMillis = millis();
+      Menu();
+      MenuSelect();
+      sleepCheck();
+      tempHum();
+      fanControl();
+      lightControl();
+      humControl();
+      tempControl();
+      display.clearDisplay();
+      delay(50);
+    }
+
+    void Menu () {
+      display.setCursor(0,0);
+      display.setTextSize(1.5);
+      display.print(hif);
+      display.print("*F   ");  //DHT22 Temp
+      display.print(h);
+      display.print("% hum");  //DHT22 Humidity
+      
+      display.setTextSize(1);
+      display.setCursor(10, 20);
+      display.println("Fan Cycle: ");
+      display.setCursor(80, 20);
+      display.print(fea);
+      display.print(" cy/dy");  //Cycles per day
+      
+      display.setTextSize(1);
+      display.setCursor(10, 30);
+      display.println("Humidity: ");
+      display.setCursor(80, 30);
+      display.print(hum);
+      display.print(" %");  //Percent Humidity
+      
+      display.setTextSize(1);
+      display.setCursor(10, 40);
+      display.println("Temp: ");
+      display.setCursor(80, 40);
+      display.print(temp);
+      display.print(" *F");  //Temperature
+      
+      display.setTextSize(1);
+      display.setCursor(10, 50);
+      display.println("LED Cycle: ");
+      display.setCursor(80, 50);
+      display.print(light);
+      display.print(" hr/dy");  //Hours per day
+
+
+      display.setCursor(2, (menuPos * 10) + 10);
+      if (press == false){
+        display.println(">");
+      }else{
+        display.println("+");
+      }
+      if (sleep == true) {
+        display.clearDisplay();  
+      }
+      display.display();
+   }
+
+//This is the Menu Selection code.  It updates the cursor position and the timers for the peripherals.
+    void MenuSelect() {
+      if(!digitalRead(BUTTON_A)){
+        press = !press;
+        fanTimer = currentMillis; //update timers
+        lightTimer = currentMillis;
+      }
+      if (press == false) {        
+        if(!digitalRead(BUTTON_C)){
+          menuPos ++;;
+        }
+        if(!digitalRead(BUTTON_B)){
+          menuPos --;
+        }
+        if(menuPos > 4) {
+          menuPos = 1;
+        }
+        if(menuPos < 1) {
+          menuPos = 4;
+      }
+      }else{
+      if (menuPos == 1){ //fan, set to 24 because you generally don't need Fresh air cycling more than that, but you can change it
+        if(!digitalRead(BUTTON_C)){
+          fea = fea - 1;
+        }
+        if(!digitalRead(BUTTON_B)){
+          fea = fea + 1;
+        }
+        if(fea > 24){
+          fea = 0;
+        }
+        if(fea < 0){
+          fea = 24;
+        }
+      }
+      if (menuPos == 2){
+        if(!digitalRead(BUTTON_C)){
+          hum = hum - 1;
+        }
+        if(!digitalRead(BUTTON_B)){
+          hum = hum + 1;
+        }
+        if(hum > 100){
+          hum = 0;
+        }
+        if(hum < 0){
+          hum = 100;
+        }
+      }
+      if (menuPos == 3){
+        if(!digitalRead(BUTTON_C)){
+          temp = temp - 1;
+        }
+        if(!digitalRead(BUTTON_B)){
+          temp = temp + 1;
+        }
+        if(temp > 85){
+          temp = 0;
+        }
+        if(temp < 0){
+          temp = 85;
+        }
+      }
+      if (menuPos == 4){
+        if(!digitalRead(BUTTON_C)){
+          light = light - 1;
+        }
+        if(!digitalRead(BUTTON_B)){
+          light = light + 1;
+        }
+        if(light > 24){
+          light = 0;
+        }
+        if(light < 0){
+          light = 24;
+        }
+      }
+    }
+    delay (100);
+    }
+//Checks if buttons been pressed recently, or else goes to sleep to not ruin the OLED display
+    void sleepCheck(){
+      if (!digitalRead(BUTTON_A) || !digitalRead(BUTTON_B) || !digitalRead(BUTTON_C)) {
+        startMillis = currentMillis;
+        sleep = false;
+      }
+      if (currentMillis - startMillis >= sleepTimer) {        
+        sleep = true;
+      }
+    }
+    
+//DHT22 Reading Code
+    void tempHum(){
+      h = dht.readHumidity();
+      // Read temperature as Fahrenheit (isFahrenheit = true)
+      int f = dht.readTemperature(true);
+    
+      // Check if any reads failed and exit early (to try again).
+      if (isnan(h) || isnan(f)) {
+        Serial.println(F("Failed to read from DHT sensor!"));
+        return;
+      }
+    
+      // Compute heat index in Fahrenheit (the default)
+      hif = dht.computeHeatIndex(f, h);    
+    }
+//Fan Control
+    void fanControl() {
+      if (humOn == false && fanOn == false && fea > 0 && (currentMillis - fanTimer >= (86400000/(fea)))) {    //divides the amount of time in a day by the amount of times the fan goes off
+        digitalWrite(fanOutput, HIGH);
+        fanOn = true;
+        fanTimer = currentMillis;
+        fanOnTimer = currentMillis;
+      }
+      if (fanOn == true && currentMillis - fanOnTimer >= 10000) { //on for 10 seconds
+        digitalWrite(fanOutput, LOW);
+        fanOn = false;
+      }
+      }
+//Humidity Control      
+      void humControl() {
+      if (humOn == false && hum > h && hum > 25) {  //Won't turn on until it's at least 25 percent humidity, bc fungi don't like dry      
+        digitalWrite(humOutput, HIGH);
+        digitalWrite(fanOutput, HIGH);
+        humOn = true;
+      }
+      if (humOn == true && h >= hum) { //turns on when humidity is less than requested amount
+        digitalWrite(humOutput, LOW);
+        digitalWrite(fanOutput, LOW);
+        humOn = false;
+      }
+      }
+//Light Control      
+      void lightControl() {
+      if (light > 0 && lightOn == false && ((currentMillis - lightTimer >= 86400000) || (currentMillis - lightTimer) < 1000)) {    //The OR statement (||) is so you don't have to wait an entire day to have your lights come on, and it kicks on after the SELECT button is pressed   
+        digitalWrite(lightOutput, HIGH);
+        lightOn = true;
+        lightTimer = currentMillis;
+        lightOnTimer = currentMillis;
+      }
+      if (lightOn == true && currentMillis - lightOnTimer >= (light * 3600000)) { //on for hours per day
+        digitalWrite(lightOutput, LOW);
+        lightOn = false;
+      }
+      }
+//Temperature Control
+      void tempControl() {
+      if (tempOn == false && temp > hif && temp > 50) {        
+        digitalWrite(tempOutput, HIGH);
+        tempOn = true;
+      }
+      if (tempOn == true && hif >= temp) { //turns on when temp is less than requested amount
+        digitalWrite(tempOutput, LOW);
+        tempOn = false;
+      }
+      }
+
+
+      
